@@ -1,0 +1,316 @@
+Sys.setlocale(category = "LC_ALL", locale = "Greek")
+
+library(ggplot2)
+library(scatterpie)
+library(rgeos)
+library(rgdal)
+library(tidyverse)
+library(tidyxl)
+library(xlsx)
+library(dplyr)
+library(readxl)
+library(sf)
+library(leaflet)
+library(leaflet.minicharts)
+library(htmltools)
+library(htmlwidgets)
+
+reg3<-readOGR("Reg-3.shp")
+DATA3<-read_xlsx("REGIONS2016B.xlsx")
+
+DAT <- DATA3 %>% 
+  dplyr::select(KOD = KALCODE, Perifname = LKPRF16_DESCRIPTION, 
+                Young = YOUNG, Middleaged = MIDDLEAGED, Elderly = ELDERLY, 
+                Gini = GINI, Atkison = ATKINSON, Ratio8020 = RATIO_80_20) %>% 
+  dplyr::mutate(KOD = as.character(KOD), Total = Young+Middleaged+Elderly) %>% 
+  dplyr::mutate(perc_Y = 100*Young/Total, 
+                perc_M = 100*Middleaged/Total,
+                perc_E = 100*Elderly/Total)
+
+
+DF3<-fortify(reg3)
+head(DF3)
+
+reg3 <- st_read("reg-3.shp", stringsAsFactors=FALSE) %>%
+  st_transform(crs="+init=epsg:4326") 
+reg3 <- st_simplify(reg3)
+
+
+leaflet() %>% 
+  addProviderTiles("OpenStreetMap.Mapnik") %>%
+  setView(lat = 38.5, lng = 23.8, zoom = 6) %>%
+  addPolygons(data = reg3, fillOpacity = 0.1, weight = 2) 
+
+head(reg3)
+
+LEV3 <- reg3 %>% 
+  dplyr::mutate(
+    centroid = st_transform(reg3, crs = 4326) %>% 
+      st_centroid() %>% 
+      st_transform(., '+proj=longlat +ellps=WGS84 +no_defs') %>%
+      st_geometry() 
+  ) %>% 
+  dplyr::select(KOD=KALCODE, geometry, centroid) 
+
+DF  <- inner_join(LEV3, DAT, by = "KOD")
+
+centroids <- 
+  st_transform(DF$centroid, '+proj=longlat +ellps=WGS84 +no_defs') %>%
+  st_coordinates(DF$centroid., crs=4326) %>%
+  matrix(ncol = 2, byrow = F) %>% 
+  as_tibble() %>% 
+  setNames(c("lon","lat"))
+
+DF1 <- dplyr::select(as.data.frame(DF ), -c(geometry, centroid)) %>% 
+  bind_cols(centroids)
+
+leaflet() %>% 
+  #addProviderTiles("OpenStreetMap.Mapnik") %>%
+  setView(lat = 38.5, lng = 23.8, zoom = 6) %>%
+  addPolygons(data = DF, fillOpacity = 0.1, weight = 1) %>% 
+  addMarkers(lng=centroids$lon, lat=centroids$lat, label=DF$Perifname)
+
+colors <- c("#3093e5", "#fcba50", "#a0d9e8")
+leaflet() %>% 
+  setView(lat = 38.5, lng = 23.8, zoom = 5) %>%
+  addPolygons(data = DF, fillOpacity = 0.1, weight = 1,group = "Group3") %>% 
+  addMinicharts(
+    lng = centroids$lon, lat = centroids$lat,
+    type = "pie", # bar, pie
+    chartdata = DF1[, c("perc_Y", "perc_M", "perc_E")],
+    #colorPalette = colors,
+    width = 30, height = 30
+  )
+
+
+
+LABELS <- paste0( "<b>",DF$Perifname,"</b>", "<br/>", 
+                  "Gini: ", round(DF$Gini, 3), "<br/>", 
+                  "Atkison: ", round(DF$Atkison, 3), "<br/>", 
+                  "Ratio 80/20 : ", round(DF$Ratio8020, 3) )  %>% 
+  lapply(HTML)
+
+m <- leaflet(DF) %>% 
+  setView(lat = 38.5, lng = 23.8, zoom = 6) %>%
+  addPolygons(weight = 2, color = "#0000FF") %>% 
+  addPolygons( fillOpacity = 0.5, weight=0,
+               smoothFactor = 0.5, 
+               label =  LABELS,
+               color = ~colorQuantile("YlOrRd", Atkison, n = 5)(Atkison),group = "Level3"
+  )%>%
+  addMinicharts(
+    lng = centroids$lon, lat = centroids$lat,
+    type = "pie", # bar, pie
+    chartdata = DF1[, c("perc_Y", "perc_M", "perc_E")],
+    #colorPalette = colors,
+    width = 30, height = 30
+  )
+
+m
+
+saveWidget(m, "region3.html", 
+           title="", background = "white",
+           selfcontained = TRUE)
+
+reg4 <- st_read("reg-4.shp", stringsAsFactors=FALSE) %>%
+  st_transform(crs="+init=epsg:4326") 
+reg4 <- st_simplify(reg4)
+
+
+leaflet() %>% 
+  addProviderTiles("OpenStreetMap.Mapnik") %>%
+  setView(lat = 38.5, lng = 23.8, zoom = 6) %>%
+  addPolygons(data = reg4, fillOpacity = 0.1, weight = 2) 
+
+head(reg4)
+
+LEV4 <- reg4 %>% 
+  dplyr::mutate(
+    centroid = st_transform(reg4, crs = 4326) %>% 
+      st_centroid() %>% 
+      st_transform(., '+proj=longlat +ellps=WGS84 +no_defs') %>%
+      st_geometry() 
+  ) %>% 
+  dplyr::select(KOD=KALCODE, geometry, centroid) 
+
+centroids4 <- 
+  st_transform(LEV4$centroid, '+proj=longlat +ellps=WGS84 +no_defs') %>%
+  st_coordinates(LEV4$centroid., crs=4326) %>%
+  matrix(ncol = 2, byrow = F) %>% 
+  as_tibble() %>% 
+  setNames(c("lon","lat"))
+
+DF4 <- dplyr::select(as.data.frame(LEV4 ), -c(geometry, centroid)) %>% 
+  bind_cols(centroids4)
+
+leaflet() %>% 
+  #addProviderTiles("OpenStreetMap.Mapnik") %>%
+  setView(lat = 38.5, lng = 23.8, zoom = 6) %>%
+  addPolygons(data = LEV4, fillOpacity = 0.1, weight = 1) %>% 
+  addMarkers(lng=centroids4$lon, lat=centroids4$lat, label=LEV4$KOD)
+
+ratio4 <- reg4 %>% 
+  dplyr::select(SHAPE_Area,SHAPE_Leng) %>% 
+  dplyr::mutate(Total = SHAPE_Leng+SHAPE_Area) %>% 
+  dplyr::mutate(Lenght = 100*SHAPE_Leng/Total, 
+                Area = 100*SHAPE_Area/Total)
+
+
+colors <- c("#3093e5", "#fcba50", "#a0d9e8")
+leaflet() %>% 
+  setView(lat = 38.5, lng = 23.8, zoom = 5) %>%
+  addPolygons(data = LEV4, fillOpacity = 0.1, weight = 1)%>% 
+  addMinicharts(
+    lng = centroids4$lon, lat = centroids4$lat,
+    type = "pie", # bar, pie
+    chartdata = ratio4[, c("Lenght", "Area")],
+    #colorPalette = colors,
+    width = 10, height = 10
+  )
+
+ratio4 <- data.frame(lapply(ratio4, as.character), stringsAsFactors=FALSE)
+ratio4 <- data.frame(lapply(ratio4, as.factor), stringsAsFactors=FALSE)
+ratio4 <- data.frame(lapply(ratio4, as.numeric), stringsAsFactors=FALSE)
+
+is.numeric(ratio4)
+
+LABELS4 <- paste0( ratio4$LEKTIKO,  
+                   ratio4$SHAPE_Leng, 
+                   ratio4$SHAPE_Area)  %>% 
+  lapply(HTML)
+
+m4 <- leaflet(LEV4) %>% 
+  setView(lat = 38.5, lng = 23.8, zoom = 6) %>%
+  addPolygons(data = LEV4, fillOpacity = 0.1, weight = 1,group = "Level4")%>%
+  addPolygons(weight = 2, color = "#a8ddb5") %>% 
+  addPolygons( fillOpacity = 0.5, weight=0,
+               smoothFactor = 0.5, 
+               label =  LABELS4
+  )%>%
+  addMinicharts(
+    lng = centroids4$lon, lat = centroids4$lat,
+    type = "pie", # bar, pie
+    chartdata = ratio4[, c("Lenght", "Area")],
+    #colorPalette = colors,
+    width = 10, height = 10
+  )%>%
+  groupOptions("Group4")
+
+m4
+
+saveWidget(m4, "region4.html", 
+           title="", background = "white",
+           selfcontained = TRUE)
+
+
+
+
+
+reg5 <- st_read("reg-5.shp", stringsAsFactors=FALSE) %>%
+  st_transform(crs="+init=epsg:4326") 
+reg5 <- st_simplify(reg5)
+
+
+leaflet() %>% 
+  addProviderTiles("OpenStreetMap.Mapnik") %>%
+  setView(lat = 38.5, lng = 23.8, zoom = 6) %>%
+  addPolygons(data = reg5, fillOpacity = 0.1, weight = 2) 
+
+head(reg5)
+
+LEV5 <- reg5 %>% 
+  dplyr::mutate(
+    centroid = st_transform(reg5, crs = 4326) %>% 
+      st_centroid() %>% 
+      st_transform(., '+proj=longlat +ellps=WGS84 +no_defs') %>%
+      st_geometry() 
+  ) %>% 
+  dplyr::select(KOD=KALCODE, geometry, centroid) 
+
+LABELS5 <- paste0( ratio5$LEKTIKO,  
+                   ratio5$SHAPE_Leng, 
+                   ratio5$SHAPE_Area)  %>% 
+  lapply(HTML)
+
+
+centroids5 <- 
+  st_transform(LEV5$centroid, '+proj=longlat +ellps=WGS84 +no_defs') %>%
+  st_coordinates(LEV5$centroid., crs=4326) %>%
+  matrix(ncol = 2, byrow = F) %>% 
+  as_tibble() %>% 
+  setNames(c("lon","lat"))
+
+DF5 <- dplyr::select(as.data.frame(LEV5 ), -c(geometry, centroid)) %>% 
+  bind_cols(centroids5)
+
+leaflet() %>% 
+  #addProviderTiles("OpenStreetMap.Mapnik") %>%
+  setView(lat = 38.5, lng = 23.8, zoom = 6) %>%
+  addPolygons(data = LEV5, fillOpacity = 0.1, weight = 1) %>% 
+  addMarkers(lng=centroids5$lon, lat=centroids5$lat, label=LEV5$KOD)
+
+ratio5 <- reg5 %>% 
+  dplyr::select(SHAPE_Area,SHAPE_Leng) %>% 
+  dplyr::mutate(Total = SHAPE_Leng+SHAPE_Area) %>% 
+  dplyr::mutate(Lenght = 100*SHAPE_Leng/Total, 
+                Area = 100*SHAPE_Area/Total)
+
+
+colors <- c("#3093e5", "#fcba50", "#a0d9e8")
+leaflet() %>% 
+  setView(lat = 38.5, lng = 23.8, zoom = 5) %>%
+  addPolygons(data = LEV5, fillOpacity = 0.1, weight = 1)%>% 
+  addMinicharts(
+    lng = centroids5$lon, lat = centroids5$lat,
+    type = "pie", # bar, pie
+    chartdata = ratio5[, c("Lenght", "Area")],
+    #colorPalette = colors,
+    width = 5, height = 5
+  )
+
+sapply(ratio5,mode)
+is.numeric(ratio5)
+
+ratio5 <- data.frame(lapply(ratio5, as.character), stringsAsFactors=FALSE)
+ratio5 <- data.frame(lapply(ratio5, as.factor), stringsAsFactors=FALSE)
+ratio5 <- data.frame(lapply(ratio5, as.numeric), stringsAsFactors=FALSE)
+
+
+lapply(HTML)
+
+colors5<-("#e0f3db","#a8ddb5","#43a2ca")
+m5 <- leaflet(LEV5) %>% 
+  setView(lat = 38.5, lng = 23.8, zoom = 6) %>%
+  addPolygons(data = LEV5, fillOpacity = 0.1, weight = 1)%>%
+  addPolygons(weight = 2, color = "red") %>% 
+  addPolygons( fillOpacity = 0.5, weight=0,
+               smoothFactor = 0.5,
+               label = LABELS5
+               
+               
+  )%>%
+  addMinicharts(
+    lng = centroids5$lon, lat = centroids5$lat,
+    type = "pie", # bar, pie
+    chartdata = ratio5[, c("Lenght", "Area")],
+    #colorPalette = colors,
+    width = 5, height = 5
+  )
+ 
+  
+  m5
+
+saveWidget(m5, "region5.html", 
+           title="", background = "white",
+           selfcontained = TRUE)
+
+
+
+
+library(manipulateWidget)
+
+widgets<-combineWidgets(m,m4,m5)
+
+saveWidget(widgets, "widgets345.html", 
+           title="", background = "white",
+           selfcontained = TRUE)
